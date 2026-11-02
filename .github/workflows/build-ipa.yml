@@ -10,11 +10,6 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 360
 
-    env:
-      CARGO_BUILD_JOBS: 2
-      CMAKE_BUILD_PARALLEL_LEVEL: 2
-      RUST_BACKTRACE: full
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -31,54 +26,20 @@ jobs:
           sudo xcode-select -s "$XCODE/Contents/Developer"
           echo "DEVELOPER_DIR=$XCODE/Contents/Developer" >> "$GITHUB_ENV"
 
-      - name: Configure Apple SDK
-        run: |
-          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-          CC=$(xcrun --sdk iphoneos --find clang)
-          CXX=$(xcrun --sdk iphoneos --find clang++)
-          AR=$(xcrun --sdk iphoneos --find ar)
-
-          echo "SDKROOT=$SDK" >> "$GITHUB_ENV"
-          echo "CC=$CC" >> "$GITHUB_ENV"
-          echo "CXX=$CXX" >> "$GITHUB_ENV"
-          echo "AR=$AR" >> "$GITHUB_ENV"
-
-          echo "CC_aarch64_apple_ios=$CC" >> "$GITHUB_ENV"
-          echo "CXX_aarch64_apple_ios=$CXX" >> "$GITHUB_ENV"
-          echo "AR_aarch64_apple_ios=$AR" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_AARCH64_APPLE_IOS_LINKER=$CC" >> "$GITHUB_ENV"
-
-          echo "CMAKE_OSX_SYSROOT=$SDK" >> "$GITHUB_ENV"
-          echo "CMAKE_OSX_ARCHITECTURES=arm64" >> "$GITHUB_ENV"
-
       - name: Install Rust
         run: |
           rustup toolchain install 1.98.1 --profile minimal
           rustup target add aarch64-apple-ios --toolchain 1.98.1
 
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
           brew install cmake pkgconf xcodegen
 
-      - name: Create iOS CMake toolchain
-        run: |
-          mkdir -p .github/toolchains
-
-          cat > .github/toolchains/ios.cmake <<'EOF'
-          set(CMAKE_SYSTEM_NAME iOS)
-          set(CMAKE_OSX_SYSROOT "$ENV{SDKROOT}")
-          set(CMAKE_OSX_ARCHITECTURES arm64)
-          set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
-          EOF
-
-          echo "CMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/.github/toolchains/ios.cmake" >> "$GITHUB_ENV"
-
-      - name: Verify build environment
+      - name: Verify environment
         run: |
           xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
           rustc +1.98.1 --version
-          cmake --version
+          xcrun --sdk iphoneos --show-sdk-version
 
       - name: Build and package Mush8 IPA
         run: |
