@@ -26,7 +26,6 @@ jobs:
       - name: Run Official Build Script
         run: |
           chmod +x ./make-ios.sh
-          # Set the deployment target directly in the environment variables for the build script
           export IPHONEOS_DEPLOYMENT_TARGET=16.0
           ./make-ios.sh --ipa FREE=1 BUNDLE_ID="com.sideload.mush8" || true
 
@@ -55,7 +54,7 @@ jobs:
               exit 1
             fi
             
-            # Write structural layout mapping specs with iOS 16 support indicators
+            # Write structural layout mapping specs with fixed array closing tag
             cat > "build/Payload/Mush8.app/Info.plist" <<'EOF'
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
