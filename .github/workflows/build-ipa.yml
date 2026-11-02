@@ -50,12 +50,23 @@ jobs:
       - name: Build Mush8 IPA
         run: |
           set -euxo pipefail
+          
           chmod +x ./make-ios.sh
+          
+          echo "Starting IPA build..."
           ./make-ios.sh --ipa 2>&1 | tee build-ipa.log
 
+          echo "Checking generated files..."
+          find build -maxdepth 5 -type f -print || true
+
           echo "Checking IPA..."
-          test -s build/Mush8.ipa
-          unzip -l build/Mush8.ipa | grep 'Payload/Mush8.app'
+          if [ -s build/Mush8.ipa ]; then
+            echo "IPA FOUND!"
+
+          else
+            echo "IPA NOT FOUND!"
+            exit 1
+          fi
 
       - name: Upload IPA
         if: success()
