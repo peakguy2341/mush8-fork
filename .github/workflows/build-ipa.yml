@@ -5,7 +5,8 @@ on:
 
 jobs:
   build-ios:
-    runs-on: macos-14
+    # Upgrades the virtual computer to the latest macOS environment with Xcode 16 pre-installed
+    runs-on: macos-latest
     
     steps:
       - name: Checkout Code
@@ -25,23 +26,20 @@ jobs:
 
       - name: Force Xcode Compilation to Custom Path
         run: |
-          # 1. Select the modern Xcode 16 application package natively
-          sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
-          
-          # 2. Create the directories so xcodegen validates perfectly
+          # 1. Initialize project directory components cleanly
           mkdir -p target/ios-res/modules
           mkdir -p target/ios-res/shaders
           mkdir -p ios-res/modules
           mkdir -p ios-res/shaders
           
-          # 3. Initialize project layouts natively
+          # 2. Generate native project schema specifications
           xcodegen generate --spec ios/project.yml
           
-          # 4. Compile Rust binaries to prepare dependencies
+          # 3. Compile Rust logic dependencies
           cargo build --release --target aarch64-apple-ios || true
           cp target/aarch64-apple-ios/release/libnxpatch.a ios-res/modules/ || true
 
-          # 5. Direct compilation using the selected Xcode 16 path
+          # 4. Compile application data layouts using native Xcode 16 toolchains
           export IPHONEOS_DEPLOYMENT_TARGET=16.0
           xcodebuild -project ios/Mush8.xcodeproj \
             -scheme Mush8 \
@@ -58,17 +56,17 @@ jobs:
         run: |
           mkdir -p build/Payload
           
-          # Force copy directly from our custom output target path
+          # Isolate the generated build folder from custom compilation trees
           if [ -d "custom_output_dir/Build/Products/Release-iphoneos/Mush8.app" ]; then
-            echo "Successfully isolated Xcode compilation folder!"
+            echo "Successfully isolated Xcode compilation bundle folder structure!"
             cp -r custom_output_dir/Build/Products/Release-iphoneos/Mush8.app build/Payload/
           else
-            echo "Running global scan within secure path boundaries..."
+            echo "Scanning build cache structures..."
             APP_PATH=$(find custom_output_dir -name "Mush8.app" -type d | head -n 1)
             cp -r "$APP_PATH" build/Payload/
           fi
           
-          # Zip the populated layout cleanly
+          # Zip the populated layout tree structure cleanly into your ready-to-sign container
           cd build && zip -r Mush8.ipa Payload/
 
       - name: Upload Finished IPA
