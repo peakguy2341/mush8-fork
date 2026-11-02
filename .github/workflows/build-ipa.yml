@@ -21,14 +21,65 @@ jobs:
 
       - name: Install Tools via Homebrew
         run: |
-          # Both tools are strictly required for the script to finish
           brew install xcodegen cmake
 
-      - name: Run Official Build Script
+      - name: Run Direct Binary Compilation
         run: |
-          chmod +x ./make-ios.sh
-          # FREE=1 tells the project to strip premium Apple Developer certificate demands
-          ./make-ios.sh --ipa FREE=1 BUNDLE_ID="com.sideload.mush8"
+          # Compiles the actual Mario Kart recompiled binaries directly
+          cargo build --release --target aarch64-apple-ios
+
+      - name: Manual Assembly of Mush8 App Bundle
+        run: |
+          # 1. Replicate a standard iOS application payload tree structure
+          mkdir -p build/Payload/Mush8.app
+          
+          # 2. Extract the compiled executable output binary from target paths
+          # Mush8 uses either nxhost or mush8 as its binary output targets
+          if [ -f "target/aarch64-apple-ios/release/nxhost" ]; then
+            cp target/aarch64-apple-ios/release/nxhost build/Payload/Mush8.app/Mush8
+          elif [ -f "target/aarch64-apple-ios/release/mush8" ]; then
+            cp target/aarch64-apple-ios/release/mush8 build/Payload/Mush8.app/Mush8
+          else
+            echo "Searching for executable..."
+            find target/aarch64-apple-ios/release/ -maxdepth 1 -type f -not -name "*.a" -not -name "*.d" -exec cp {} build/Payload/Mush8.app/Mush8 \;
+          fi
+          
+          # 3. Write a bare-bones Info.plist so your iOS device reads it natively
+          cat > "build/Payload/Mush8.app/Info.plist" <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>Mush8</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.sideload.mush8</string>
+              <key>CFBundleName</key>
+              <string>Mush8</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>UIDeviceFamily</key>
+              <array>
+                  <integer>1</integer>
+                  <integer>2</integer>
+              </array>
+          </dict>
+          </plist>
+          EOF
+          
+          # 4. Pull down the essential dynamic project assets and configurations
+          if [ -d "ios/Mush8/Resources" ]; then
+            cp -r ios/Mush8/Resources/* build/Payload/Mush8.app/ || true
+          fi
+          
+          # 5. Compress everything down securely into your working IPA file
+          cd build && zip -r Mush8.ipa Payload/
 
       - name: Upload Finished IPA
         uses: actions/upload-artifact@v4
