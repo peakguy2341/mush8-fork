@@ -21,35 +21,16 @@ jobs:
 
       - name: Install Tools via Homebrew
         run: |
+          # Both tools are strictly required for the script to finish
           brew install xcodegen cmake
 
-      - name: Compile and Force Build
+      - name: Run Official Build Script
         run: |
           chmod +x ./make-ios.sh
-          # Reverting back to the original script that compiled perfectly
-          ./make-ios.sh --ipa || true
+          # FREE=1 tells the project to strip premium Apple Developer certificate demands
+          ./make-ios.sh --ipa FREE=1 BUNDLE_ID="com.sideload.mush8"
 
-      - name: Manual Fallback Package
-        run: |
-          # 1. Clear out any old folders and make a fresh Payload directory
-          rm -rf build/Payload build/Mush8.ipa
-          mkdir -p build/Payload
-          
-          # 2. Automatically locate the generated app folder by looking specifically for Info.plist
-          PLIST_PATH=$(find /Users/runner/work -name "Info.plist" -path "*/Mush8.app/*" | head -n 1)
-          
-          if [ -n "$PLIST_PATH" ]; then
-            # Extract the actual folder path containing the file structure
-            APP_DIR=$(dirname "$PLIST_PATH")
-            echo "Found app bundle components at: $APP_DIR"
-            cp -r "$APP_DIR" build/Payload/Mush8.app
-            cd build && zip -r Mush8.ipa Payload/
-          else
-            echo "Error: Could not locate compiled Mush8 app files anywhere in the environment."
-            exit 1
-          fi
-
-      - name: Upload IPA Artifact
+      - name: Upload Finished IPA
         uses: actions/upload-artifact@v4
         with:
           name: Mush8-IPA
