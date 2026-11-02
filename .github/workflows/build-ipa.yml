@@ -26,9 +26,26 @@ jobs:
       - name: Run Official Build Script
         run: |
           chmod +x ./make-ios.sh
-          # Set the deployment floor and execute the official script pipeline
           export IPHONEOS_DEPLOYMENT_TARGET=16.0
           ./make-ios.sh --ipa FREE=1 BUNDLE_ID="com.sideload.mush8" || true
+
+      - name: Package Compiled App Into IPA
+        run: |
+          # 1. Create a fresh payload workspace folder layout
+          mkdir -p build/Payload
+          
+          # 2. Automatically locate the generated app folder components
+          APP_PATH=$(find /Users/runner/work -name "Mush8.app" -type d | head -n 1)
+          
+          if [ -n "$APP_PATH" ]; then
+            echo "Found complete compiled app bundle at: $APP_PATH"
+            cp -r "$APP_PATH" build/Payload/
+            cd build && zip -r Mush8.ipa Payload/
+          else
+            # Emergency copy if it was generated inside the ios/ directory
+            cp -r ios/build/Release-iphoneos/Mush8.app build/Payload/ || true
+            cd build && zip -r Mush8.ipa Payload/
+          fi
 
       - name: Upload Finished IPA
         uses: actions/upload-artifact@v4
