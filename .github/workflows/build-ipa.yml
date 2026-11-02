@@ -26,7 +26,6 @@ jobs:
       - name: Run Official Build Script
         run: |
           chmod +x ./make-ios.sh
-          # The "|| true" ensures that even if Xcode stops at code-signing, the build doesn't crash
           ./make-ios.sh --ipa FREE=1 BUNDLE_ID="com.sideload.mush8" || true
 
       - name: Manual Assembly from Successful Compilation
@@ -34,14 +33,10 @@ jobs:
           # 1. Create a clean Payload and app bundle folder layout
           mkdir -p build/Payload/Mush8.app
           
-          # 2. Extract the compiled executable binary from the build path
-          if [ -f "target/aarch64-apple-ios/release/nxhost" ]; then
-            cp target/aarch64-apple-ios/release/nxhost build/Payload/Mush8.app/Mush8
-          elif [ -f "target/aarch64-apple-ios/release/mush8" ]; then
-            cp target/aarch64-apple-ios/release/mush8 build/Payload/Mush8.app/Mush8
-          else
-            find target/aarch64-apple-ios/release/ -maxdepth 1 -type f -not -name "*.a" -not -name "*.d" -exec cp {} build/Payload/Mush8.app/Mush8 \;
-          fi
+          # 2. Scans your entire project directory for the compiled binaries
+          echo "Scanning entire workspace for the executable binaries..."
+          find . -type f -name "nxhost" -exec cp {} build/Payload/Mush8.app/Mush8 \;
+          find . -type f -name "mush8" -exec cp {} build/Payload/Mush8.app/Mush8 \;
           
           # 3. Create a valid Info.plist configuration file
           cat > "build/Payload/Mush8.app/Info.plist" <<'EOF'
