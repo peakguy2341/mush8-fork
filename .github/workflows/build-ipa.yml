@@ -25,16 +25,20 @@ jobs:
 
       - name: Force Xcode Compilation to Custom Path
         run: |
-          # 1. Initialize project layouts natively
+          # 1. Create the directories FIRST so xcodegen validates perfectly
+          mkdir -p target/ios-res/modules
+          mkdir -p target/ios-res/shaders
           mkdir -p ios-res/modules
           mkdir -p ios-res/shaders
+          
+          # 2. Initialize project layouts natively now that paths exist
           xcodegen generate --spec ios/project.yml
           
-          # 2. Compile Rust binaries to prepare dependencies
+          # 3. Compile Rust binaries to prepare dependencies
           cargo build --release --target aarch64-apple-ios || true
           cp target/aarch64-apple-ios/release/libnxpatch.a ios-res/modules/ || true
 
-          # 3. Direct compilation bypassing make-ios.sh into a secure DerivedData directory
+          # 4. Direct compilation bypassing make-ios.sh into a secure DerivedData directory
           export IPHONEOS_DEPLOYMENT_TARGET=16.0
           xcodebuild -project ios/Mush8.xcodeproj \
             -scheme Mush8 \
