@@ -10,8 +10,13 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 360
 
+    env:
+      CARGO_BUILD_JOBS: 2
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+      RUST_BACKTRACE: full
+
     steps:
-      - name: Checkout repository
+      - name: Checkout Mush8
         uses: actions/checkout@v4
 
       - name: Select Xcode 26
@@ -35,20 +40,24 @@ jobs:
         run: |
           brew install cmake pkgconf xcodegen
 
-      - name: Verify environment
+      - name: Verify tools
         run: |
           xcodebuild -version
           rustc +1.98.1 --version
           xcrun --sdk iphoneos --show-sdk-version
+          cmake --version
 
-      - name: Build and package Mush8 IPA
+      - name: Build Mush8 IPA
         run: |
-          set -o pipefail
+          set -euxo pipefail
           chmod +x ./make-ios.sh
           ./make-ios.sh --ipa 2>&1 | tee build-ipa.log
-          test -f build/Mush8.ipa
 
-      - name: Upload Mush8 IPA
+          echo "Checking IPA..."
+          test -s build/Mush8.ipa
+          unzip -l build/Mush8.ipa | grep 'Payload/Mush8.app'
+
+      - name: Upload IPA
         if: success()
         uses: actions/upload-artifact@v4
         with:
