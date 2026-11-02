@@ -26,7 +26,8 @@ jobs:
       - name: Compile and Generate IPA
         run: |
           chmod +x ./make-ios.sh
-          ./make-ios.sh --ipa
+          # Forces Xcode to pack the app without requiring an Apple Developer account
+          ./make-ios.sh --ipa CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
