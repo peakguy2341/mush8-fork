@@ -23,11 +23,28 @@ jobs:
         run: |
           brew install xcodegen
 
-      - name: Compile and Generate IPA
+      - name: Generate Xcode Project
         run: |
-          chmod +x ./make-ios.sh
-          # FREE=1 bypasses premium Apple Developer account sign-off requirements
-          ./make-ios.sh --ipa FREE=1 BUNDLE_ID="com.yourname.mush8"
+          xcodegen generate --spec ios/project.yml
+
+      - name: Build Xcode Project (No Sign)
+        run: |
+          xcodebuild -project ios/Mush8.xcodeproj \
+            -scheme Mush8 \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build_output \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            clean build
+
+      - name: Package App into IPA
+        run: |
+          mkdir -p build/Payload
+          cp -r build_output/Build/Products/Release-iphoneos/Mush8.app build/Payload/
+          cd build && zip -r Mush8.ipa Payload/
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
