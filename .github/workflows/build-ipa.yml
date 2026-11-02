@@ -1,80 +1,85 @@
-name: Build Mush8 IPA
+
+name: Build Mush8 iOS
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
-  build-ios:
+  build:
     runs-on: macos-latest
-    
+
     steps:
-      - name: Checkout Code
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
 
-      - name: Setup Rust Environment
+      - name: Select Xcode 16
+        shell: bash
         run: |
-          rustup toolchain install 1.98.1
-          rustup target add aarch64-apple-ios --toolchain 1.98.1
-          rustup default 1.98.1
+          set -euo pipefail
 
-      - name: Install System Tools
-        run: |
-          brew install xcodegen cmake
+          XCODE="$(find /Applications -maxdepth 1 \
+            -name 'Xcode_16*.app' -print -quit)"
 
-      - name: Native Rust Compilation
-        run: |
-          # 1. Compile the core clean Rust recompiler engine without the broken C script files
-          export SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)
-          export IPHONEOS_DEPLOYMENT_TARGET=16.0
-          cargo build --release --target aarch64-apple-ios
-
-      - name: Handcrafted App Bundle Assembly
-        run: |
-          # 1. Recreate the precise folder layout structure for an iOS app natively
-          mkdir -p build/Payload/Mush8.app
-          
-          # 2. Extract the true compiled high-volume execution binary straight from Cargo target outputs
-          BINARY_PATH=$(find target/aarch64-apple-ios/release -type f -maxdepth 1 -not -name "*.a" -not -name "*.d" | head -n 1)
-          
-          if [ -n "$BINARY_PATH" ] && [ -s "$BINARY_PATH" ]; then
-            echo "Successfully isolated functional executable asset at: $BINARY_PATH"
-            cp "$BINARY_PATH" build/Payload/Mush8.app/Mush8
-          else
-            echo "Emergency lookup across broad workspace blocks..."
-            find target/ -type f -name "mush8" -exec cp {} build/Payload/Mush8.app/Mush8 \;
-            find target/ -type f -name "nxhost" -exec cp {} build/Payload/Mush8.app/Mush8 \;
+          if [ -z "$XCODE" ]; then
+            echo "Xcode 16 not found!"
+            ls -d /Applications/Xcode*.app || true
+            exit 1
           fi
-          
-          # 3. Write a flawless structural manifest profile configuration profile file line-by-line
-          echo '<?xml version="1.0" encoding="UTF-8"?>' > build/Payload/Mush8.app/Info.plist
-          echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">' >> build/Payload/Mush8.app/Info.plist
-          echo '<plist version="1.0">' >> build/Payload/Mush8.app/Info.plist
-          echo '<dict>' >> build/Payload/Mush8.app/Info.plist
-          echo '    <key>CFBundleExecutable</key><string>Mush8</string>' >> build/Payload/Mush8.app/Info.plist
-          echo '    <key>CFBundleIdentifier</key><string>com.sideload.mush8</string>' >> build/Payload/Mush8.app/Info.plist
-          echo '    <key>CFBundleName</key><string>Mush8</string>' >> build/Payload/Mush8.app/Info.plist
-          echo '    <key>CFBundlePackageType</key><string>APPL</string>' >> build/Payload/Mush8.app/Info.plist
-          echo '    <key>CFBundleShortVersionString</key><string>1.0</string>' >> build/Payload/Mush8.app/Info.plist
-          echo '    <key>CFBundleVersion</key><string>1</string>' >> build/Payload/Mush8.app/Info.plist
-          echo '    <key>LSRequiresIPhoneOS</key><true/>' >> build/Payload/Mush8.app/Info.plist
-          echo '    <key>MinimumOSVersion</key><string>16.0</string>' >> build/Payload/Mush8.app/Info.plist
-          echo '    <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>' >> build/Payload/Mush8.app/Info.plist
-          echo '</dict>' >> build/Payload/Mush8.app/Info.plist
-          echo '</plist>' >> build/Payload/Mush8.app/Info.plist
-          
-          # 4. Bind asset directories into the custom package framework
-          mkdir -p build/Payload/Mush8.app/ios-res/modules
-          mkdir -p build/Payload/Mush8.app/ios-res/shaders
-          if [ -d "ios/Mush8/Resources" ]; then cp -r ios/Mush8/Resources/* build/Payload/Mush8.app/ || true; fi
-          
-          # 5. Compress everything down securely into your working IPA installation container
-          cd build && zip -r Mush8.ipa Payload/
 
-      - name: Upload Finished IPA
-        uses: actions/upload-artifact@v4
-        with:
-          name: Mush8-IPA
-          path: build/Mush8.ipa
-          if-no-files-found: error
+          echo "DEVELOPER_DIR=$XCODE/Contents/Developer" >> "$GITHUB_ENV"
+
+      - name: Configure iOS SDK and compilers
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          CC="$(xcrun --sdk iphoneos --find clang)"
+          CXX="$(xcrun --sdk iphoneos --find clang++)"
+          AR="$(xcrun --find ar)"
+
+          {
+            echo "SDKROOT=$SDK"
+            echo "IPHONEOS_DEPLOYMENT_TARGET=16.0"
+
+            echo "CC=$CC"
+            echo "CXX=$CXX"
+            echo "AR=$AR"
+
+            echo "CC_aarch64_apple_ios=$CC"
+            echo "CXX_aarch64_apple_ios=$CXX"
+            echo "AR_aarch64_apple_ios=$AR"
+
+            echo "CARGO_TARGET_AARCH64_APPLE_IOS_LINKER=$CC"
+
+            echo "CMAKE_SYSTEM_NAME=iOS"
+            echo "CMAKE_OSX_SYSROOT=$SDK"
+            echo "CMAKE_OSX_ARCHITECTURES=arm64"
+            echo "CMAKE_OSX_DEPLOYMENT_TARGET=16.0"
+            echo "CMAKE_IOS_INSTALL_COMBINED=NO"
+          } >> "$GITHUB_ENV"
+
+          xcodebuild -version
+          echo "SDK: $SDK"
+
+      - name: Install Rust
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add aarch64-apple-ios
+
+      - name: Install CMake
+        run: brew install cmake
+
+      - name: Build for iOS
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cargo build \
+            --locked \
+            --release \
+            --target aarch64-apple-ios
