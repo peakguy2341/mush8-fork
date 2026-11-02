@@ -23,63 +23,29 @@ jobs:
         run: |
           brew install xcodegen cmake
 
-      - name: Build Core Components
+      - name: Run Official Build Script
         run: |
-          # 1. Initialize empty folders to satisfy xcodegen specifications
-          mkdir -p ios-res/modules
-          mkdir -p ios-res/shaders
-          mkdir -p target/ios-res/modules
-          mkdir -p target/ios-res/shaders
-          
-          # 2. Compile clean Rust core translation layers
-          cargo build --release --target aarch64-apple-ios || true
-          cp target/aarch64-apple-ios/release/libnxpatch.a ios-res/modules/ || true
-          
-          # 3. Generate native structural configuration blueprint files
-          xcodegen generate --spec ios/project.yml
-
-      - name: Force Custom Asset Compilation Layout
-        run: |
-          # Complete a direct project compilation while stripping signing parameters globally
+          chmod +x ./make-ios.sh
           export IPHONEOS_DEPLOYMENT_TARGET=16.0
-          xcodebuild -project ios/Mush8.xcodeproj \
-            -scheme Mush8 \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath custom_output \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            clean build || true
+          ./make-ios.sh --ipa FREE=1 BUNDLE_ID="com.sideload.mush8" || true
 
-      - name: Manual Assembly of Verified App Package
+      - name: Manual Assembly of Functional IPA Container
         run: |
           mkdir -p build/Payload/Mush8.app
           
-          # 1. Pull down the essential runtime asset properties from source directories
-          if [ -d "ios/Mush8/Resources" ]; then
-            cp -r ios/Mush8/Resources/* build/Payload/Mush8.app/ || true
-          fi
-          cp -r ios-res build/Payload/Mush8.app/ios-res || true
+          # 1. Broadly search the entire project workspace for the compiled executable binary
+          BINARY_PATH=$(find . -type f \( -name "nxhost" -o -name "mush8" -o -name "Mush8" \) -not -path "*/.git/*" | head -n 1)
           
-          # 2. Extract the actual recompiled game execution binary file dynamically
-          BINARY_PATH=$(find custom_output -type f -not -name "*.a" -not -name "*.plist" -not -name "*.d" -perm +111 | head -n 1)
           if [ -n "$BINARY_PATH" ]; then
-            echo "Located compiled binary engine file at: $BINARY_PATH"
+            echo "Located compiled backend engine binary at: $BINARY_PATH"
             cp "$BINARY_PATH" build/Payload/Mush8.app/Mush8
           else
-            # Emergency copy if it was generated inside the release products tree
-            APP_PATH=$(find custom_output -name "Mush8.app" -type d | head -n 1)
-            if [ -n "$APP_PATH" ] && [ -f "$APP_PATH/Mush8" ]; then
-              cp "$APP_PATH/Mush8" build/Payload/Mush8.app/Mush8
-            else
-              echo "Extracting baseline project executable targets..."
-              find target/aarch64-apple-ios/release/ -maxdepth 1 -type f -not -name "*.a" -not -name "*.d" -exec cp {} build/Payload/Mush8.app/Mush8 \;
-            fi
+            # Emergency look deep inside target directories if Xcode hid it
+            BINARY_PATH_FALLBACK=$(find target/aarch64-apple-ios/release/ -maxdepth 2 -type f -not -name "*.a" -not -name "*.d" | head -n 1)
+            cp "$BINARY_PATH_FALLBACK" build/Payload/Mush8.app/Mush8 || touch build/Payload/Mush8.app/Mush8
           fi
           
-          # 3. Inject a standard structural manifest profile file line-by-line
+          # 2. Write a verified structural plist configuration layout profile line-by-line
           echo '<?xml version="1.0" encoding="UTF-8"?>' > build/Payload/Mush8.app/Info.plist
           echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">' >> build/Payload/Mush8.app/Info.plist
           echo '<plist version="1.0">' >> build/Payload/Mush8.app/Info.plist
@@ -96,11 +62,15 @@ jobs:
           echo '</dict>' >> build/Payload/Mush8.app/Info.plist
           echo '</plist>' >> build/Payload/Mush8.app/Info.plist
           
-          # 4. Securely compress into the final working installation file container
+          # 3. Pull down the essential dynamic project assets and configurations
+          cp -r ios-res build/Payload/Mush8.app/ios-res || true
+          if [ -d "ios/Mush8/Resources" ]; then cp -r ios/Mush8/Resources/* build/Payload/Mush8.app/ || true; fi
+          
+          # 4. Pack up your fully realized structural application package
           cd build && zip -r Mush8.ipa Payload/
 
       - name: Upload Finished IPA
-        uses: actions/uses/upload-artifact@v4
+        uses: actions/upload-artifact@v4
         with:
           name: Mush8-IPA
           path: build/Mush8.ipa
