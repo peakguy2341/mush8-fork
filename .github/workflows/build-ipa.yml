@@ -1,0 +1,36 @@
+name: Build Mush8 IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Setup Rust Environment
+        run: |
+          rustup toolchain install 1.98.1
+          rustup target add aarch64-apple-ios --toolchain 1.98.1
+          rustup default 1.98.1
+
+      - name: Install Tools via Homebrew
+        run: |
+          brew install xcodegen
+
+      - name: Compile and Generate IPA
+        run: |
+          chmod +x ./make-ios.sh
+          ./make-ios.sh --ipa
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mush8-IPA
+          path: build/Mush8.ipa
+          if-no-files-found: error
