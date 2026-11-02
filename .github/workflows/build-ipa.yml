@@ -23,29 +23,46 @@ jobs:
         run: |
           brew install xcodegen cmake
 
-      - name: Run Official Build Script
+      - name: Force Xcode Compilation to Custom Path
         run: |
-          chmod +x ./make-ios.sh
-          export IPHONEOS_DEPLOYMENT_TARGET=16.0
-          ./make-ios.sh --ipa FREE=1 BUNDLE_ID="com.sideload.mush8" || true
+          # 1. Initialize project layouts natively
+          mkdir -p ios-res/modules
+          mkdir -p ios-res/shaders
+          xcodegen generate --spec ios/project.yml
+          
+          # 2. Compile Rust binaries to prepare dependencies
+          cargo build --release --target aarch64-apple-ios || true
+          cp target/aarch64-apple-ios/release/libnxpatch.a ios-res/modules/ || true
 
-      - name: Package Compiled App Into IPA
+          # 3. Direct compilation bypassing make-ios.sh into a secure DerivedData directory
+          export IPHONEOS_DEPLOYMENT_TARGET=16.0
+          xcodebuild -project ios/Mush8.xcodeproj \
+            -scheme Mush8 \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath custom_output_dir \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            clean build || true
+
+      - name: Extract App Package Natively
         run: |
-          # 1. Create a fresh payload workspace folder layout
           mkdir -p build/Payload
           
-          # 2. Automatically locate the generated app folder components
-          APP_PATH=$(find /Users/runner/work -name "Mush8.app" -type d | head -n 1)
-          
-          if [ -n "$APP_PATH" ]; then
-            echo "Found complete compiled app bundle at: $APP_PATH"
-            cp -r "$APP_PATH" build/Payload/
-            cd build && zip -r Mush8.ipa Payload/
+          # Force copy directly from our custom output target path
+          if [ -d "custom_output_dir/Build/Products/Release-iphoneos/Mush8.app" ]; then
+            echo "Successfully isolated Xcode compilation folder!"
+            cp -r custom_output_dir/Build/Products/Release-iphoneos/Mush8.app build/Payload/
           else
-            # Emergency copy if it was generated inside the ios/ directory
-            cp -r ios/build/Release-iphoneos/Mush8.app build/Payload/ || true
-            cd build && zip -r Mush8.ipa Payload/
+            echo "Running global scan within secure path boundaries..."
+            APP_PATH=$(find custom_output_dir -name "Mush8.app" -type d | head -n 1)
+            cp -r "$APP_PATH" build/Payload/
           fi
+          
+          # Zip the populated layout cleanly
+          cd build && zip -r Mush8.ipa Payload/
 
       - name: Upload Finished IPA
         uses: actions/upload-artifact@v4
