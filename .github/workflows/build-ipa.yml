@@ -10,16 +10,11 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 360
 
-    env:
-      CARGO_BUILD_JOBS: 2
-      CMAKE_BUILD_PARALLEL_LEVEL: 2
-      RUST_BACKTRACE: full
-
     steps:
-      - name: Checkout Mush8
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode 26
+      - name: Select Xcode
         run: |
           XCODE=$(find /Applications -maxdepth 1 \
             -name 'Xcode_26*.app' | sort -V | tail -1)
@@ -31,57 +26,58 @@ jobs:
           sudo xcode-select -s "$XCODE/Contents/Developer"
           echo "DEVELOPER_DIR=$XCODE/Contents/Developer" >> "$GITHUB_ENV"
 
+      - name: Install dependencies
+        run: |
+          brew install cmake pkgconf xcodegen
+
       - name: Install Rust
         run: |
           rustup toolchain install 1.98.1 --profile minimal
           rustup target add aarch64-apple-ios --toolchain 1.98.1
 
-      - name: Install dependencies
+      - name: Check build inputs
         run: |
-          brew install cmake pkgconf xcodegen
+          echo "Checking repository..."
+          ls -la
+          echo "Checking game input files..."
+          for f in prod.keys base.nsp upd4-0-1.nsp; do
+            if [ -f "$f" ]; then
+              echo "Found: $f"
+            else
+              echo "Missing: $f"
+            fi
+          done
 
-      - name: Verify tools
+      - name: Build IPA with detailed logging
         run: |
-          xcodebuild -version
-          rustc +1.98.1 --version
-          xcrun --sdk iphoneos --show-sdk-version
-          cmake --version
-
-      - name: Build Mush8 IPA
-        run: |
-          set -euxo pipefail
-          
+          mkdir -p build
           chmod +x ./make-ios.sh
-          
-          echo "Starting IPA build..."
-          ./make-ios.sh --ipa 2>&1 | tee build-ipa.log
 
-          echo "Checking generated files..."
-          find build -maxdepth 5 -type f -print || true
+          set +e
+          bash -x ./make-ios.sh --ipa 2>&1 | tee build/full-build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
 
-          echo "Checking IPA..."
-          if [ -s build/Mush8.ipa ]; then
-            echo "IPA FOUND!"
+          echo "Build script exit code: $STATUS"
+          echo "Searching for IPA..."
+          find . -type f -name "*.ipa" -print
 
-          else
-            echo "IPA NOT FOUND!"
-            exit 1
-          fi
+          exit "$STATUS"
 
       - name: Upload IPA
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Mush8-iOS-IPA
-          path: build/Mush8.ipa
+          path: "**/*.ipa"
           if-no-files-found: error
           retention-days: 7
 
-      - name: Upload build logs
+      - name: Upload complete logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Mush8-Build-Logs
-          path: build-ipa.log
+          name: Mush8-Full-Build-Logs
+          path: build/full-build.log
           if-no-files-found: ignore
           retention-days: 7
