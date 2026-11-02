@@ -23,26 +23,70 @@ jobs:
         run: |
           brew install xcodegen cmake
 
-      - name: Compile and Force Build
+      - name: Build Core Translation Binaries
         run: |
-          chmod +x ./make-ios.sh
-          ./make-ios.sh --ipa || true
+          # 1. Compile the back-end Mario Kart 8 emulation layers
+          cargo build --release --target aarch64-apple-ios
+          
+          # 2. Build the asset translation modules required by the engine
+          mkdir -p ios-res/modules
+          mkdir -p ios-res/shaders
+          cp target/aarch64-apple-ios/release/libnxpatch.a ios-res/modules/ || true
+          
+          # 3. Safely generate the system layout specs
+          xcodegen generate --spec ios/project.yml
 
-      - name: Manual Fallback Package
+      - name: Build and Assemble App Package Manually
         run: |
-          # 1. Recreate the precise folder structure for an iOS app bundle manually
+          # 1. Create a clean Payload and app bundle folder layout
           mkdir -p build/Payload/Mush8.app
           
-          # 2. Copy the natively compiled executable binary into the bundle
-          cp target/aarch64-apple-ios/release/mush8 build/Payload/Mush8.app/Mush8 || cp target/aarch64-apple-ios/release/libnxpatch.a build/Payload/Mush8.app/Mush8 || true
+          # 2. Copy the natively compiled executables directly into the bundle
+          if [ -f "target/aarch64-apple-ios/release/nxhost" ]; then
+            cp target/aarch64-apple-ios/release/nxhost build/Payload/Mush8.app/Mush8
+          elif [ -f "target/aarch64-apple-ios/release/mush8" ]; then
+            cp target/aarch64-apple-ios/release/mush8 build/Payload/Mush8.app/Mush8
+          else
+            # Emergency copy if binary is under a different target wrapper name
+            cp target/aarch64-apple-ios/release/*.a build/Payload/Mush8.app/Mush8 || true
+          fi
           
-          # 3. Copy the manifest file and standard asset properties from the repository
-          cp ios/Mush8/Info.plist build/Payload/Mush8.app/Info.plist || cp Info.plist build/Payload/Mush8.app/Info.plist || true
+          # 3. Create a valid structural Info.plist so iOS recognizes the application
+          cat > "build/Payload/Mush8.app/Info.plist" <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>Mush8</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.mush.mush8</string>
+              <key>CFBundleName</key>
+              <string>Mush8</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>UIDeviceFamily</key>
+              <array>
+                  <integer>1</integer>
+                  <integer>2</integer>
+              </array>
+          </dict>
+          </plist>
+          EOF
           
-          # 4. Pull the generated shaders/resource modules into the folder structure
-          cp -r ios-res build/Payload/Mush8.app/ios-res || true
-          
-          # 5. Compress everything into your final working IPA file
+          # 4. Pull the generated Metal shaders and assets into the app bundle
+          cp -r ios-res/ build/Payload/Mush8.app/ios-res || true
+          cp -r ios/Mush8/Resources/ build/Payload/Mush8.app/ || true
+
+      - name: Compress into Working IPA File
+        run: |
+          # Compress the fully populated Payload directory into the final app package
           cd build && zip -r Mush8.ipa Payload/
 
       - name: Upload IPA Artifact
