@@ -54,36 +54,22 @@ jobs:
               exit 1
             fi
             
-            # Write structural layout mapping specs with fixed array closing tag
-            cat > "build/Payload/Mush8.app/Info.plist" <<'EOF'
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
-            <plist version="1.0">
-            <dict>
-                <key>CFBundleExecutable</key>
-                <string>Mush8</string>
-                <key>CFBundleIdentifier</key>
-                <string>com.sideload.mush8</string>
-                <key>CFBundleName</key>
-                <string>Mush8</string>
-                <key>CFBundlePackageType</key>
-                <string>APPL</string>
-                <key>CFBundleShortVersionString</key>
-                <string>1.0</string>
-                <key>CFBundleVersion</key>
-                <string>1</string>
-                <key>LSRequiresIPhoneOS</key>
-                <true/>
-                <key>MinimumOSVersion</key>
-                <string>16.0</string>
-                <key>UIDeviceFamily</key>
-                <array>
-                    <integer>1</integer>
-                    <integer>2</integer>
-                </array>
-            </dict>
-            </plist>
-            EOF
+            # Write plist using echo line-by-line to guarantee absolutely zero end-of-file syntax crashes
+            echo '<?xml version="1.0" encoding="UTF-8"?>' > build/Payload/Mush8.app/Info.plist
+            echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">' >> build/Payload/Mush8.app/Info.plist
+            echo '<plist version="1.0">' >> build/Payload/Mush8.app/Info.plist
+            echo '<dict>' >> build/Payload/Mush8.app/Info.plist
+            echo '    <key>CFBundleExecutable</key><string>Mush8</string>' >> build/Payload/Mush8.app/Info.plist
+            echo '    <key>CFBundleIdentifier</key><string>com.sideload.mush8</string>' >> build/Payload/Mush8.app/Info.plist
+            echo '    <key>CFBundleName</key><string>Mush8</string>' >> build/Payload/Mush8.app/Info.plist
+            echo '    <key>CFBundlePackageType</key><string>APPL</string>' >> build/Payload/Mush8.app/Info.plist
+            echo '    <key>CFBundleShortVersionString</key><string>1.0</string>' >> build/Payload/Mush8.app/Info.plist
+            echo '    <key>CFBundleVersion</key><string>1</string>' >> build/Payload/Mush8.app/Info.plist
+            echo '    <key>LSRequiresIPhoneOS</key><true/>' >> build/Payload/Mush8.app/Info.plist
+            echo '    <key>MinimumOSVersion</key><string>16.0</string>' >> build/Payload/Mush8.app/Info.plist
+            echo '    <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>' >> build/Payload/Mush8.app/Info.plist
+            echo '</dict>' >> build/Payload/Mush8.app/Info.plist
+            echo '</plist>' >> build/Payload/Mush8.app/Info.plist
             
             cp -r ios-res build/Payload/Mush8.app/ios-res || true
             if [ -d "ios/Mush8/Resources" ]; then cp -r ios/Mush8/Resources/* build/Payload/Mush8.app/ || true; fi
