@@ -24,14 +24,10 @@ jobs:
           brew install xcodegen
 
       - name: Compile and Generate IPA
-        env:
-          # Injects code-signing overrides directly into the macOS environment
-          CODE_SIGNING_ALLOWED: "NO"
-          CODE_SIGNING_REQUIRED: "NO"
-          CODE_SIGN_IDENTITY: ""
         run: |
           chmod +x ./make-ios.sh
-          ./make-ios.sh --ipa
+          # FREE=1 bypasses premium Apple Developer account sign-off requirements
+          ./make-ios.sh --ipa FREE=1 BUNDLE_ID="com.yourname.mush8"
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
