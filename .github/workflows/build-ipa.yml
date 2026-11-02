@@ -23,11 +23,28 @@ jobs:
         run: |
           brew install xcodegen
 
-      - name: Compile and Generate IPA
+      - name: Manual Build and Package
         run: |
-          chmod +x ./make-ios.sh
-          # Forces Xcode to pack the app without requiring an Apple Developer account
-          ./make-ios.sh --ipa CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+          # 1. Compile the backend dependencies
+          cargo build --release --target aarch64-apple-ios
+          
+          # 2. Generate the native Xcode project file
+          xcodegen generate --spec ios/project.yml
+          
+          # 3. Compile the iOS App binary while completely disabling signing
+          xcodebuild -project ios/Mush8.xcodeproj \
+                     -scheme Mush8 \
+                     -configuration Release \
+                     -sdk iphoneos \
+                     CODE_SIGNING_ALLOWED=NO \
+                     CODE_SIGNING_REQUIRED=NO \
+                     CODE_SIGN_IDENTITY="" \
+                     clean build
+                     
+          # 4. Package into an unsigned .ipa folder structure
+          mkdir -p build/Payload
+          cp -r ios/build/Release-iphoneos/Mush8.app build/Payload/
+          cd build && zip -r Mush8.ipa Payload/
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
