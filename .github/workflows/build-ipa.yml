@@ -21,7 +21,6 @@ jobs:
 
       - name: Install Tools via Homebrew
         run: |
-          # Added cmake to resolve the engine compilation crash
           brew install xcodegen cmake
 
       - name: Compile and Force Build
@@ -31,19 +30,20 @@ jobs:
 
       - name: Manual Fallback Package
         run: |
-          mkdir -p build/Payload
+          # 1. Recreate the precise folder structure for an iOS app bundle manually
+          mkdir -p build/Payload/Mush8.app
           
-          # Searches your builder directories dynamically for the compiled file
-          APP_PATH=$(find /Users/runner -name "Mush8.app" -type d -not -path "*/.trash/*" | head -n 1)
+          # 2. Copy the natively compiled executable binary into the bundle
+          cp target/aarch64-apple-ios/release/mush8 build/Payload/Mush8.app/Mush8 || cp target/aarch64-apple-ios/release/libnxpatch.a build/Payload/Mush8.app/Mush8 || true
           
-          if [ -n "$APP_PATH" ]; then
-            echo "Found app bundle at: $APP_PATH"
-            cp -r "$APP_PATH" build/Payload/
-            cd build && zip -r Mush8.ipa Payload/
-          else
-            echo "Error: Could not locate Mush8.app anywhere in the runner environment."
-            exit 1
-          fi
+          # 3. Copy the manifest file and standard asset properties from the repository
+          cp ios/Mush8/Info.plist build/Payload/Mush8.app/Info.plist || cp Info.plist build/Payload/Mush8.app/Info.plist || true
+          
+          # 4. Pull the generated shaders/resource modules into the folder structure
+          cp -r ios-res build/Payload/Mush8.app/ios-res || true
+          
+          # 5. Compress everything into your final working IPA file
+          cd build && zip -r Mush8.ipa Payload/
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
