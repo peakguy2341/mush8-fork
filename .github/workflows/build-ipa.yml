@@ -1,71 +1,57 @@
-# setup
 name: Mush8 iOS IPA Build
 
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   build:
     runs-on: macos-latest
+    timeout-minutes: 360
+
+    env:
+      CARGO_BUILD_JOBS: 2
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+      RUST_BACKTRACE: full
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Select installed Xcode 26
-        shell: bash
+      - name: Select Xcode 26
         run: |
-          set -euo pipefail
-
-          XCODE="$(find /Applications -maxdepth 1 \
-            -name 'Xcode_26*.app' -print | sort -V | tail -1)"
+          XCODE=$(find /Applications -maxdepth 1 \
+            -name 'Xcode_26*.app' | sort -V | tail -1)
 
           if [ -z "$XCODE" ]; then
             XCODE="/Applications/Xcode.app"
           fi
 
-          if [ ! -d "$XCODE/Contents/Developer" ]; then
-            echo "Xcode installation not found!"
-            ls -d /Applications/Xcode*.app || true
-            exit 1
-          fi
-
+          sudo xcode-select -s "$XCODE/Contents/Developer"
           echo "DEVELOPER_DIR=$XCODE/Contents/Developer" >> "$GITHUB_ENV"
 
       - name: Configure Apple SDK
-        shell: bash
         run: |
-          set -euo pipefail
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          CC=$(xcrun --sdk iphoneos --find clang)
+          CXX=$(xcrun --sdk iphoneos --find clang++)
+          AR=$(xcrun --sdk iphoneos --find ar)
 
-          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
-          CC="$(xcrun --sdk iphoneos --find clang)"
-          CXX="$(xcrun --sdk iphoneos --find clang++)"
-          AR="$(xcrun --find ar)"
+          echo "SDKROOT=$SDK" >> "$GITHUB_ENV"
+          echo "CC=$CC" >> "$GITHUB_ENV"
+          echo "CXX=$CXX" >> "$GITHUB_ENV"
+          echo "AR=$AR" >> "$GITHUB_ENV"
 
-          {
-            echo "SDKROOT=$SDK"
-            echo "CC=$CC"
-            echo "CXX=$CXX"
-            echo "AR=$AR"
+          echo "CC_aarch64_apple_ios=$CC" >> "$GITHUB_ENV"
+          echo "CXX_aarch64_apple_ios=$CXX" >> "$GITHUB_ENV"
+          echo "AR_aarch64_apple_ios=$AR" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_APPLE_IOS_LINKER=$CC" >> "$GITHUB_ENV"
 
-            echo "CC_aarch64_apple_ios=$CC"
-            echo "CXX_aarch64_apple_ios=$CXX"
-            echo "AR_aarch64_apple_ios=$AR"
-
-            echo "CARGO_TARGET_AARCH64_APPLE_IOS_LINKER=$CC"
-
-            echo "CMAKE_OSX_SYSROOT=$SDK"
-            echo "CMAKE_OSX_ARCHITECTURES=arm64"
-          } >> "$GITHUB_ENV"
-
-          xcodebuild -version
-          echo "iOS SDK: $SDK"
+          echo "CMAKE_OSX_SYSROOT=$SDK" >> "$GITHUB_ENV"
+          echo "CMAKE_OSX_ARCHITECTURES=arm64" >> "$GITHUB_ENV"
 
       - name: Install Rust
-        shell: bash
         run: |
           rustup toolchain install 1.98.1 --profile minimal
           rustup target add aarch64-apple-ios --toolchain 1.98.1
@@ -74,55 +60,47 @@ jobs:
         run: |
           brew install cmake pkgconf xcodegen
 
-      - name: Create CMake toolchain
-        shell: bash
+      - name: Create iOS CMake toolchain
         run: |
           mkdir -p .github/toolchains
 
           cat > .github/toolchains/ios.cmake <<'EOF'
           set(CMAKE_SYSTEM_NAME iOS)
-
-          set(CMAKE_OSX_SYSROOT "$ENV{SDKROOT}"
-              CACHE PATH "" FORCE)
-
-          set(CMAKE_OSX_ARCHITECTURES arm64
-              CACHE STRING "" FORCE)
-
+          set(CMAKE_OSX_SYSROOT "$ENV{SDKROOT}")
+          set(CMAKE_OSX_ARCHITECTURES arm64)
           set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
           EOF
 
           echo "CMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/.github/toolchains/ios.cmake" >> "$GITHUB_ENV"
 
-      - name: Verify toolchain
+      - name: Verify build environment
         run: |
-          echo "Developer: $DEVELOPER_DIR"
-          echo "SDK: $SDKROOT"
-
-          test -d "$DEVELOPER_DIR"
-          test -d "$SDKROOT"
-
+          xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
           rustc +1.98.1 --version
           cmake --version
-          xcodegen --version
 
       - name: Build and package Mush8 IPA
-        shell: bash
         run: |
-          set -euo pipefail
-
+          set -o pipefail
           chmod +x ./make-ios.sh
-
-          ./make-ios.sh --ipa
-
+          ./make-ios.sh --ipa 2>&1 | tee build-ipa.log
           test -f build/Mush8.ipa
 
-          echo "IPA successfully created!"
-
       - name: Upload Mush8 IPA
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Mush8-iOS-IPA
           path: build/Mush8.ipa
           if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mush8-Build-Logs
+          path: build-ipa.log
+          if-no-files-found: ignore
           retention-days: 7
