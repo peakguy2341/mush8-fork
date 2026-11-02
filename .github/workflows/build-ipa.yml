@@ -21,7 +21,8 @@ jobs:
 
       - name: Install Tools via Homebrew
         run: |
-          brew install xcodegen
+          # Added cmake to resolve the engine compilation crash
+          brew install xcodegen cmake
 
       - name: Compile and Force Build
         run: |
@@ -32,7 +33,7 @@ jobs:
         run: |
           mkdir -p build/Payload
           
-          # Automatically finds the compiled .app wherever Xcode hid it
+          # Searches your builder directories dynamically for the compiled file
           APP_PATH=$(find /Users/runner -name "Mush8.app" -type d -not -path "*/.trash/*" | head -n 1)
           
           if [ -n "$APP_PATH" ]; then
