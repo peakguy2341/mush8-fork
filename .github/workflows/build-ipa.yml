@@ -26,18 +26,19 @@ jobs:
       - name: Compile and Force Build
         run: |
           chmod +x ./make-ios.sh
-          # Runs the full compilation but bypasses the final script exit code error
+          # Runs the full compilation pipeline up to the code signing gate
           ./make-ios.sh --ipa || true
 
       - name: Manual Fallback Package
         run: |
-          # 1. Create a fresh Payload folder
+          # 1. Clear out any previous build folders and make a fresh Payload path
+          rm -rf build/Payload build/Mush8.ipa
           mkdir -p build/Payload
           
-          # 2. Grab the actual compiled app from the build folder and move it to Payload
-          cp -r build/Mush8.app build/Payload/
+          # 2. Copy the actual .app file from the Xcode build products folder into Payload
+          cp -r ios/build/Release-iphoneos/Mush8.app build/Payload/
           
-          # 3. Zip it into a real, non-empty IPA file
+          # 3. Compress into the working IPA
           cd build && zip -r Mush8.ipa Payload/
 
       - name: Upload IPA Artifact
