@@ -23,17 +23,37 @@ jobs:
         run: |
           brew install xcodegen
 
-      - name: Compile and Force Build
+      - name: Run Build and Dynamic Asset Generator
         run: |
-          chmod +x ./make-ios.sh
-          # Runs the full official generator pipeline but catches the signing gate exit code
-          ./make-ios.sh --ipa || true
+          # 1. Compile the main Rust translation modules natively
+          cargo build --release --target aarch64-apple-ios
+          
+          # 2. Replicate what make-ios.sh does to create the missing resource folders
+          mkdir -p ios-res/modules
+          mkdir -p ios-res/shaders
+          cp target/aarch64-apple-ios/release/libnxpatch.a ios-res/modules/ || true
+          
+          # 3. Generate the native Xcode configuration project safely
+          xcodegen generate --spec ios/project.yml
 
-      - name: Manual Fallback Package
+      - name: Build App via Xcode (Completely Skip Signing)
         run: |
-          # If the script stopped before zipping due to signing, manually grab the built binary
+          xcodebuild -project ios/Mush8.xcodeproj \
+            -scheme Mush8 \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build_output \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            clean build
+
+      - name: Package App into Real IPA
+        run: |
           mkdir -p build/Payload
-          cp -r ios/build/Release-iphoneos/Mush8.app build/Payload/ || cp -r build/Mush8.app build/Payload/ || true
+          # Locates and copies the compiled .app payload binary
+          cp -r build_output/Build/Products/Release-iphoneos/Mush8.app build/Payload/
           cd build && zip -r Mush8.ipa Payload/
 
       - name: Upload IPA Artifact
