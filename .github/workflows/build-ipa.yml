@@ -25,35 +25,40 @@ jobs:
           brew install libarchive cmake pkg-config
           sudo xcodebuild -downloadComponent MetalToolchain || true
 
-      # 4. Reconstruct your encryption keys from Secrets
+      # 4. Reconstruct your encryption keys from SWITCH_KEYS Secret
       - name: Setup Keys
         run: |
           mkdir -p ~/Library/Application\ Support/Ryujinx/system/
           cat << 'EOF' > ~/Library/Application\ Support/Ryujinx/system/prod.keys
-          ${{ secrets.PROD_KEYS }}
+          ${{ secrets.SWITCH_KEYS }}
           EOF
           
           if [ ! -s ~/Library/Application\ Support/Ryujinx/system/prod.keys ]; then
-            echo "::error:: prod.keys is missing or empty! Double check your GitHub Secrets."
+            echo "::error:: SWITCH_KEYS is missing or empty! Double check your GitHub Secrets."
             exit 1
           fi
 
-      # 5. Download and extract your prepared game assets
+      # 5. Download and extract your raw game zip into the main repository directory
       - name: Fetch and Extract Game Assets
         run: |
-          mkdir -p game_data
-          # REPLACE THIS URL with your direct, raw download link from your file host
-          curl -L -o game_data/mk8_dump.zip "https://your-private-storage.com"
+          # REPLACE THE LINK BELOW with your actual direct download URL to your zip file
+          curl -L -o mk8_dump.zip "https://your-private-storage.com"
           
-          # Unzip the content
-          unzip -q game_data/mk8_dump.zip -d game_data/extracted/
+          # Unzip files right into the repo root where the script looks for them
+          unzip -q mk8_dump.zip -d .
           
-          # Sanity check: Ensure exefs and romfs exist in the directory structure
-          echo "Verifying extracted files..."
-          ls -R game_data/extracted/
+          # Flatten if your zip created an extra top-level folder container
+          if [ -d "mk8_dump" ]; then
+            mv mk8_dump/* .
+            rm -rf mk8_dump
+          fi
           
-          if [ ! -d "game_data/extracted/exefs" ] && [ ! -d "game_data/extracted/*/exefs" ]; then
-            echo "::error:: Game files are not in the correct format! Need 'exefs' and 'romfs'."
+          # Sanity check: Ensure base files are found
+          echo "Verifying raw assets in repo root..."
+          ls -F
+          
+          if [ ! -f "base.nsp" ] || [ ! -f "update.nsp" ] || [ ! -d "Firmware" ]; then
+            echo "::error:: Missing vital files! Ensure base.nsp, update.nsp, and Firmware/ are present."
             exit 1
           fi
 
@@ -61,7 +66,7 @@ jobs:
       - name: Build Unsigned IPA
         run: |
           chmod +x ./make-ios.sh
-          # Pure IPA creation tool. ESign will inject the mobileprovision on-device later.
+          # Executes the build. The environment automatically locates base.nsp, update.nsp, and Firmware/
           ./make-ios.sh --ipa || exit 1
 
       # 7. Rigidly verify the IPA bundle inside the build folder before wrapping up
