@@ -1,88 +1,121 @@
-name: Build Native Mario Kart 8 (Mush8)
+name: Mush8 iOS IPA Build
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
-  build-mush8-ipa:
+  build:
     runs-on: macos-latest
-    
+    timeout-minutes: 360
+
+    env:
+      CARGO_BUILD_JOBS: 2
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+      RUST_BACKTRACE: full
+
     steps:
-      # 1. Pull down the official mush8 engine codebase
-      - name: Checkout Mush8
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          repository: 'c22dev/mush8'
-          ref: 'main'
 
-      # 2. Set up the Rust ecosystem
-      - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      # 3. Bring in development packages and the Apple Metal shader toolchain
-      - name: Install System Dependencies
+      - name: Select Xcode 26
         run: |
-          brew install libarchive cmake pkg-config
-          sudo xcodebuild -downloadComponent MetalToolchain || true
+          XCODE=$(find /Applications -maxdepth 1 \
+            -name 'Xcode_26*.app' | sort -V | tail -1)
 
-      # 4. Reconstruct your encryption keys from SWITCH_KEYS Secret
-      - name: Setup Keys
-        run: |
-          mkdir -p ~/Library/Application\ Support/Ryujinx/system/
-          cat << 'EOF' > ~/Library/Application\ Support/Ryujinx/system/prod.keys
-          ${{ secrets.SWITCH_KEYS }}
-          EOF
-          
-          if [ ! -s ~/Library/Application\ Support/Ryujinx/system/prod.keys ]; then
-            echo "::error:: SWITCH_KEYS is missing or empty! Double check your GitHub Secrets."
+          if [ -z "$XCODE" ]; then
+            echo "Xcode 26 not found."
             exit 1
           fi
 
-      # 5. Download and extract your raw game zip into the main repository directory
-      - name: Fetch and Extract Game Assets
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          echo "DEVELOPER_DIR=$XCODE/Contents/Developer" >> "$GITHUB_ENV"
+
+      - name: Install Rust
         run: |
-          # REPLACE THE LINK BELOW with your actual direct download URL to your zip file
-          curl -L -o mk8_dump.zip "https://your-private-storage.com"
-          
-          # Unzip files right into the repo root where the script looks for them
-          unzip -q mk8_dump.zip -d .
-          
-          # Flatten if your zip created an extra top-level folder container
-          if [ -d "mk8_dump" ]; then
-            mv mk8_dump/* .
-            rm -rf mk8_dump
-          fi
-          
-          # Sanity check: Ensure base files are found
-          echo "Verifying raw assets in repo root..."
-          ls -F
-          
-          if [ ! -f "base.nsp" ] || [ ! -f "update.nsp" ] || [ ! -d "Firmware" ]; then
-            echo "::error:: Missing vital files! Ensure base.nsp, update.nsp, and Firmware/ are present."
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup target add aarch64-apple-ios --toolchain 1.98.1
+
+      - name: Install dependencies
+        run: |
+          brew install cmake pkgconf xcodegen
+
+      - name: Verify environment
+        run: |
+          xcodebuild -version
+          rustc +1.98.1 --version
+          xcrun --sdk iphoneos --show-sdk-version
+          cmake --version
+
+      - name: Check game data
+        run: |
+          for file in prod.keys base.nsp upd4-0-1.nsp; do
+            if [ ! -s "$file" ]; then
+              echo "Missing or empty required input: $file"
+              exit 1
+            fi
+          done
+
+          if [ ! -d Firmware ]; then
+            echo "Missing Firmware folder."
             exit 1
           fi
 
-      # 6. Run the native packaging command optimized for ESign
-      - name: Build Unsigned IPA
+      - name: Build IPA
         run: |
+          set -o pipefail
           chmod +x ./make-ios.sh
-          # Executes the build. The environment automatically locates base.nsp, update.nsp, and Firmware/
-          ./make-ios.sh --ipa || exit 1
+          ./make-ios.sh --ipa 2>&1 | tee build.log
 
-      # 7. Rigidly verify the IPA bundle inside the build folder before wrapping up
-      - name: Validate Output Payload
+      - name: Validate IPA
         run: |
-          if [ ! -f "build/Mush8.ipa" ]; then
-            echo "::error:: The compiler finished but build/Mush8.ipa was not generated!"
-            exit 1
-          fi
-          echo "Build successful! Package size details:"
-          ls -lh build/
+          set -e
 
-      # 8. Deliver the working, compiled package
-      - name: Upload Mush8 App Bundle
+          IPA="build/Mush8.ipa"
+
+          test -s "$IPA"
+          unzip -t "$IPA"
+
+          mkdir -p ipa-check
+          unzip -q "$IPA" -d ipa-check
+
+          APP="ipa-check/Payload/Mush8.app"
+
+          test -d "$APP"
+          test -s "$APP/Info.plist"
+
+          EXECUTABLE=$(/usr/libexec/PlistBuddy \
+            -c "Print :CFBundleExecutable" "$APP/Info.plist")
+
+          echo "App executable: $EXECUTABLE"
+
+          test -s "$APP/$EXECUTABLE"
+
+          echo "IPA size:"
+          du -h "$IPA"
+
+          echo "Executable size:"
+          du -h "$APP/$EXECUTABLE"
+
+          echo "IPA VALIDATION PASSED"
+
+      - name: Upload Mush8 IPA
         uses: actions/upload-artifact@v4
         with:
-          name: working-mush8-ios-build
+          name: Mush8-iOS-IPA
           path: build/Mush8.ipa
-          retention-days: 3
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mush8-Build-Logs
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 7
