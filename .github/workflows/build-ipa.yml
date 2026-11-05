@@ -22,8 +22,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Select Xcode
+      - name: Select Xcode 26
         run: |
+          set -e
+
           XCODE=$(find /Applications -maxdepth 1 \
             -name 'Xcode_26*.app' | sort -V | tail -1)
 
@@ -44,42 +46,37 @@ jobs:
         run: |
           brew install cmake pkgconf xcodegen
 
+      - name: Install Metal Toolchain
+        run: |
+          xcodebuild -downloadComponent MetalToolchain
+
       - name: Verify environment
         run: |
           xcodebuild -version
           rustc +1.98.1 --version
           xcrun --sdk iphoneos --show-sdk-version
           cmake --version
+          xcodegen --version
 
-      - name: Check game data
+      - name: Check build inputs
         run: |
           set -e
 
-          echo "Checking required game data..."
-
-          for file in prod.keys base.nsp upd4-0-1.nsp; do
-            if [ ! -s "$file" ]; then
-              echo "Missing or empty input: $file"
-              exit 1
-            fi
-          done
-
-          if [ ! -d Firmware ]; then
-            echo "Missing Firmware folder."
+          if [ ! -s "base.nsp" ]; then
+            echo "ERROR: base.nsp is missing or empty."
             exit 1
           fi
 
-          echo "Required inputs found."
-
-      - name: Prepare update filename
-        run: |
-          set -e
-
-          if [ ! -e update.nsp ]; then
-            ln -s "$PWD/upd4-0-1.nsp" update.nsp
+          if [ -s "upd4-0-1.nsp" ]; then
+            echo "Found update 4.0.1."
+          elif [ -s "update.nsp" ]; then
+            echo "Found update.nsp."
+          else
+            echo "ERROR: No supported update file found."
+            exit 1
           fi
 
-          test -s update.nsp
+          echo "Build inputs passed."
 
       - name: Build Mush8 IPA
         run: |
@@ -87,7 +84,7 @@ jobs:
           chmod +x ./make-ios.sh
           ./make-ios.sh --ipa 2>&1 | tee build.log
 
-      - name: Validate IPA archive
+      - name: Validate IPA
         run: |
           set -e
 
@@ -105,16 +102,27 @@ jobs:
 
           APP="ipa-check/Payload/Mush8.app"
 
-          test -d "$APP"
-          test -s "$APP/Info.plist"
+          if [ ! -d "$APP" ]; then
+            echo "ERROR: Mush8.app missing."
+            exit 1
+          fi
+
+          if [ ! -s "$APP/Info.plist" ]; then
+            echo "ERROR: Info.plist missing or empty."
+            exit 1
+          fi
 
           EXECUTABLE=$(/usr/libexec/PlistBuddy \
             -c "Print :CFBundleExecutable" "$APP/Info.plist")
 
-          test -s "$APP/$EXECUTABLE"
+          if [ ! -s "$APP/$EXECUTABLE" ]; then
+            echo "ERROR: App executable missing or empty."
+            exit 1
+          fi
 
           echo "IPA VALIDATION PASSED"
           echo "Executable: $EXECUTABLE"
+
           du -h "$APP/$EXECUTABLE"
           du -h "$IPA"
 
