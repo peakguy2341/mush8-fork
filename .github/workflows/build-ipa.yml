@@ -22,13 +22,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Select Xcode 26
+      - name: Select Xcode
         run: |
           XCODE=$(find /Applications -maxdepth 1 \
             -name 'Xcode_26*.app' | sort -V | tail -1)
 
           if [ -z "$XCODE" ]; then
-            echo "Xcode 26 not found."
+            echo "ERROR: Xcode 26 not found."
             exit 1
           fi
 
@@ -53,9 +53,13 @@ jobs:
 
       - name: Check game data
         run: |
+          set -e
+
+          echo "Checking required game data..."
+
           for file in prod.keys base.nsp upd4-0-1.nsp; do
             if [ ! -s "$file" ]; then
-              echo "Missing or empty required input: $file"
+              echo "Missing or empty input: $file"
               exit 1
             fi
           done
@@ -65,19 +69,35 @@ jobs:
             exit 1
           fi
 
-      - name: Build IPA
+          echo "Required inputs found."
+
+      - name: Prepare update filename
+        run: |
+          set -e
+
+          if [ ! -e update.nsp ]; then
+            ln -s "$PWD/upd4-0-1.nsp" update.nsp
+          fi
+
+          test -s update.nsp
+
+      - name: Build Mush8 IPA
         run: |
           set -o pipefail
           chmod +x ./make-ios.sh
           ./make-ios.sh --ipa 2>&1 | tee build.log
 
-      - name: Validate IPA
+      - name: Validate IPA archive
         run: |
           set -e
 
           IPA="build/Mush8.ipa"
 
-          test -s "$IPA"
+          if [ ! -s "$IPA" ]; then
+            echo "ERROR: IPA missing or empty."
+            exit 1
+          fi
+
           unzip -t "$IPA"
 
           mkdir -p ipa-check
@@ -91,19 +111,15 @@ jobs:
           EXECUTABLE=$(/usr/libexec/PlistBuddy \
             -c "Print :CFBundleExecutable" "$APP/Info.plist")
 
-          echo "App executable: $EXECUTABLE"
-
           test -s "$APP/$EXECUTABLE"
 
-          echo "IPA size:"
+          echo "IPA VALIDATION PASSED"
+          echo "Executable: $EXECUTABLE"
+          du -h "$APP/$EXECUTABLE"
           du -h "$IPA"
 
-          echo "Executable size:"
-          du -h "$APP/$EXECUTABLE"
-
-          echo "IPA VALIDATION PASSED"
-
       - name: Upload Mush8 IPA
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Mush8-iOS-IPA
@@ -111,7 +127,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Upload build log
+      - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
